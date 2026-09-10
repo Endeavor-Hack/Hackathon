@@ -33,6 +33,11 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase Admin service account — NEVER commit
+service-account.json
+firebase-debug.log
+.firebase/
+
 # typescript
 *.tsbuildinfo
 

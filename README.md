@@ -1,94 +1,125 @@
-# Endeavour — Expo Router version (complete)
+# Endeavour
 
-Everything in this zip is meant to REPLACE parts of your existing
-`endeavour-app` project — this is not a separate app, it's the finished
-version of what we were building piece by piece in chat.
+Professional networking mobile application for the Richfield/AAA
+community — students, alumni, business/recruiters, and administrators.
+Built for the 2026 Richfield Hackathon.
 
-## What to delete from your existing project first
+## Repository layout
 
-Inside `src/app/`, delete these default template files (they conflict
-with the ones in this zip):
-- `src/app/_layout.tsx`
-- `src/app/index.tsx`
-- The whole `src/app/(tabs)/` folder
-- `src/app/modal.tsx` (if present)
+| Path | What lives there |
+|------|------------------|
+| `src/app/` | Mobile app (Expo Router) — student and business tab stacks, login/signup, admin redirect |
+| `context/` | React contexts (auth state + user doc + push registration) |
+| `components/` | Reusable RN components (posts, cards, charts, tutorial, profile widgets) |
+| `lib/` | Pure helpers (display names, feed ranking + smart matching, error mapping, push, conversation id) |
+| `theme/` | Colour + spacing + typography tokens |
+| `firebase/` | Firebase client SDK bootstrap (Auth, Firestore, Storage, Functions) |
+| `admin-web/` | Separate React (Vite) admin panel — user approvals, moderation, events, announcements, analytics |
+| `functions/` | Firebase Cloud Functions — AI proxy (Claude), CV parsing, video transcoding, push delivery |
+| `scripts/` | Ops tooling (admin provisioning) |
+| `firestore.rules`, `storage.rules`, `firestore.indexes.json`, `firebase.json` | Backend security + config |
+| `docs/` | POPIA compliance + presentation outline |
 
-Leave everything else in your project alone — `node_modules/`,
-`package.json`, `app.json`, `assets/`, and the default `components/`,
-`constants/`, `hooks/` files from the template are all harmless and don't
-conflict with anything here.
-
-## What to copy in
-
-Copy every folder from this zip into your project root, matching the
-structure exactly:
-
-```
-endeavour-app/                  ← your existing project root
-├── context/
-│   └── AuthContext.js
-├── theme/
-│   └── colors.js
-├── firebase/
-│   └── config.js
-├── components/
-│   ├── ThemedButton.js
-│   ├── ThemedInput.js
-│   └── PlaceholderScreen.js
-└── src/
-    └── app/
-        ├── _layout.js
-        ├── index.js
-        ├── login.js
-        ├── signup.js
-        ├── pending.js
-        ├── (student)/
-        │   ├── _layout.js
-        │   ├── index.js
-        │   ├── connections.js
-        │   ├── opportunities.js
-        │   ├── notifications.js
-        │   └── profile.js
-        └── (business)/
-            ├── _layout.js
-            ├── index.js
-            ├── candidates.js
-            ├── listings.js
-            ├── analytics.js
-            └── company.js
-```
-
-## Before running it
-
-Fill in your real Firebase config values in `firebase/config.js` — the
-committed version has placeholder strings that won't connect to anything.
-
-## Then run it
+## Running the mobile app
 
 ```bash
+npm install
 npx expo start
 ```
 
-If everything's in place correctly, you should land on the login screen
-first (not "Welcome to Expo"), be able to sign up as any of the three
-roles, and:
-- Students go straight into the app (5-tab layout)
-- Alumni/business accounts land on the "pending approval" screen
-- Business accounts that reach the app see a different 5-tab layout than
-  students do
+You'll land on the login screen. Sign up as any of the three
+self-serve roles:
 
-## What's real vs placeholder right now
+- **Student** — requires an @my.richfield / @richfield / @my.aaa / @aaa
+  email (enforced client-side *and* by security rules)
+- **Alumni** — asks for a graduation year + upload of a verification
+  document. Lands on the "pending approval" screen until an admin
+  reviews the document.
+- **Business** — captures the company name. Also lands on "pending
+  approval" until an admin approves.
 
-**Fully working:** signup (all 3 roles), student domain restriction, login,
-role-based routing, pending-approval gating, sign out.
+**Push notifications** and **video posting** require a native
+development build (Expo Go dropped push in SDK 53+). Everything else
+works in Expo Go.
 
-**Placeholder screens (navigate correctly, but show "coming soon"):**
-every tab inside `(student)/` and `(business)/` except the routing itself.
-Replace these one at a time as each feature gets built — the navigation
-shell around them is already provably working.
+## Running the admin panel
 
-**Not built yet — still needed before this is spec-compliant:**
-Firestore security rules (the student-domain check right now is
-client-side only, which the brief explicitly says isn't sufficient), the
-admin approval queue itself (nothing currently flips a pending account to
-approved), and every real feature behind the placeholder screens.
+```bash
+cd admin-web
+npm install
+npm run dev
+```
+
+See `admin-web/README.md` for how to gain admin access (custom claim
+via `scripts/make-admin.js`).
+
+## Deploying backend rules + functions
+
+Both need a `service-account.json` at the repo root
+(Firebase console → Project settings → Service accounts). The file is
+gitignored.
+
+```bash
+# rules + indexes + storage rules
+npm run deploy-rules
+
+# Cloud Functions (requires Blaze plan)
+cd functions && npm install
+firebase functions:secrets:set ANTHROPIC_API_KEY
+firebase deploy --only functions
+```
+
+## Feature coverage vs the brief
+
+| Brief section | Status | Where |
+|---|---|---|
+| 2.1 Auth — student domain | ✅ backend-enforced | `firestore.rules`, `signup.js` |
+| 2.1 Auth — alumni verification | ✅ document upload + admin review | `signup.js`, `admin-web/.../Users.jsx` |
+| 2.1 Auth — business approval | ✅ pending status until admin | `admin-web/.../Users.jsx` |
+| 2.1 Auth — admin provisioning | ✅ custom claim via service-account script | `scripts/make-admin.js` |
+| 2.2 Admin: user mgmt | ✅ | `admin-web/.../Users.jsx` |
+| 2.2 Admin: content moderation | ✅ | `admin-web/.../Content.jsx` |
+| 2.2 Admin: event mgmt | ✅ | `admin-web/.../Events.jsx` |
+| 2.2 Admin: opportunity oversight | ✅ | `admin-web/.../Opportunities.jsx` |
+| 2.2 Admin: platform analytics | ✅ (charts) | `admin-web/.../Analytics.jsx` |
+| 2.2 Admin: announcements | ✅ (fan-out to targeted role) | `admin-web/.../Announcements.jsx` |
+| 2.3 Profiles — all fields | ✅ (photo, exp, portfolio, badges, Credly, awards, leadership, clubs, CV) | `src/app/(student)/profile.js` |
+| 2.3 Business profile | ✅ | `src/app/(business)/company.js` |
+| 2.3 Visibility controls | ✅ per-section | `components/VisibilitySelector.js`, applied in `user/[uid].js` |
+| 2.3 Endorsements + recommendations | ✅ | `src/app/(student)/user/[uid].js` |
+| 2.4 Connections | ✅ | `src/app/(student)/connections.js` |
+| 2.4 Personalised, role-differentiated feed | ✅ | `lib/feedRanking.js` |
+| 2.4 Text posts | ✅ | `components/CreatePostBox.js` |
+| 2.4 Short-form video | ✅ transcoded server-side | `CreatePostBox.js` + `functions/index.js:processVideo` |
+| 2.4 Direct messaging | ✅ | `src/app/(student)/messages.js` + `conversation.js` |
+| 2.4 Comments + reactions | ✅ multi-type reactions | `components/PostCard.js` |
+| 2.5 Opportunities + admin approval | ✅ | `(business)/listings.js`, admin approval queue |
+| 2.5 Filter + apply | ✅ | `(student)/opportunities.js` |
+| 2.5 Career pathway explorer | ✅ | `(student)/pathways.js` |
+| 2.5 Events feed + targeted notifications | ✅ | `(student)/events.js` + admin fan-out |
+| 2.6 AI profile assistant + chatbot | ✅ Claude via Cloud Function | `(student)/chatbot.js` + `functions/index.js:chatWithAssistant` |
+| 2.6 First-run tutorial | ✅ | `components/OnboardingTutorial.js` |
+| 2.7 Three separate dashboards with charts | ✅ student / business / admin | `(student)/analytics.js`, `(business)/analytics.js`, `admin-web/.../Analytics.jsx` |
+| 2.8 Real-time notifications | ✅ live Firestore listeners + Expo push via Cloud Function | `notifications.js` + `functions/index.js:deliverPush` + `lib/registerPush.js` |
+| 2.8 Smart job matching | ✅ score-based (skills + programme + campus) | `lib/feedRanking.js:scoreOpportunity`, matches notified on approval |
+| 2.8 NLP CV parsing | ✅ Claude via Cloud Function → suggests profile fields | `functions/index.js:parseCvText`, "Auto-fill" button on profile |
+| 2.8 Video transcoding + thumbnails | ✅ Cloud Function using ffmpeg | `functions/index.js:processVideo` |
+
+## What needs your action to run end-to-end
+
+1. Enable the Blaze plan on the Firebase project (Cloud Functions +
+   Storage bandwidth).
+2. `firebase functions:secrets:set ANTHROPIC_API_KEY` before deploying
+   functions.
+3. Run `npm run make-admin <uid>` at least once to bootstrap the first
+   admin account.
+4. Build a native dev build (`npx expo run:android` or `run:ios`, or
+   use EAS) to enable push notifications and video capture in a real
+   device flow.
+
+## Compliance + presentation prep
+
+- `docs/POPIA.md` — how each of POPIA's eight conditions is met, named
+  data processors, retention, breach response.
+- `docs/presentation-outline.md` — a 17-slide deck outline mapped to
+  the brief's required sections + a live-demo running order.

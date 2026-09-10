@@ -4,10 +4,13 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingV
 import { useRouter } from "expo-router";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../../firebase/config";
+import { ref, uploadBytes } from "firebase/storage";
+import * as DocumentPicker from "expo-document-picker";
+import { auth, db, storage } from "../../firebase/config";
 import { colors, spacing, typography, radius } from "../../theme/colors";
 import ThemedInput from "../../components/ThemedInput";
 import ThemedButton from "../../components/ThemedButton";
+import { mapFirebaseError } from "../../lib/firebaseErrors";
 
 const STUDENT_DOMAINS = [
   "@my.richfield.ac.za",
@@ -28,12 +31,36 @@ export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Alumni-only fields
+  const [fullName, setFullName] = useState("");
+  const [programme, setProgramme] = useState("");
+  const [graduationYear, setGraduationYear] = useState("");
+  const [verificationDoc, setVerificationDoc] = useState(null); // { uri, name, mimeType }
+
+  // Business-only fields
+  const [companyName, setCompanyName] = useState("");
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   function isStudentDomainValid(emailValue) {
     const lower = emailValue.trim().toLowerCase();
     return STUDENT_DOMAINS.some((domain) => lower.endsWith(domain));
+  }
+
+  async function pickVerificationDoc() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "image/*"],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        setVerificationDoc(result.assets[0]);
+      }
+    } catch (err) {
+      setError("Could not open file picker: " + err.message);
+    }
   }
 
   async function handleSignup() {
@@ -56,29 +83,63 @@ export default function SignupScreen() {
       setError("Student accounts must use a Richfield/AAA institutional email address.");
       return;
     }
+    if (role === "alumni") {
+      if (!fullName.trim()) { setError("Full name is required for alumni verification."); return; }
+      if (!programme.trim()) { setError("Programme graduated from is required."); return; }
+      if (!graduationYear.trim()) { setError("Graduation year is required."); return; }
+      if (!verificationDoc) { setError("A verification document (transcript, certificate, or ID) is required."); return; }
+    }
+    if (role === "business" && !companyName.trim()) {
+      setError("Company name is required for business accounts.");
+      return;
+    }
 
     setLoading(true);
     try {
       const credential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
-      const status = role === "student" ? "active" : "pending";
+      const uid = credential.user.uid;
 
-      await setDoc(doc(db, "users", credential.user.uid), {
+      let verificationDocPath = null;
+      if (role === "alumni" && verificationDoc) {
+        // Upload proof-of-qualification to a location that firestore.rules
+        // restricts to (owner OR admin) reads. Admin panel Users page
+        // exposes a "View verification document" button that reads this.
+        const ext = verificationDoc.name?.split(".").pop() || "bin";
+        const path = `alumni-verification/${uid}/proof.${ext}`;
+        const response = await fetch(verificationDoc.uri);
+        const blob = await response.blob();
+        await uploadBytes(ref(storage, path), blob, {
+          contentType: verificationDoc.mimeType || "application/octet-stream",
+        });
+        verificationDocPath = path;
+      }
+
+      const status = role === "student" ? "active" : "pending";
+      const base = {
         email: trimmedEmail,
         role,
         status,
         createdAt: serverTimestamp(),
-      });
-      // No manual navigation — src/app/index.js redirects automatically
-      // once this user's Firestore doc is created and read back.
+      };
+      const roleFields = role === "alumni"
+        ? {
+            fullName: fullName.trim(),
+            programme: programme.trim(),
+            graduationYear: graduationYear.trim(),
+            verificationDocPath,
+          }
+        : role === "business"
+          ? { companyName: companyName.trim(), fullName: companyName.trim() }
+          : {};
+
+      await setDoc(doc(db, "users", uid), { ...base, ...roleFields });
+      router.replace("/");
     } catch (err) {
-      console.error("Signup error:", err.code, err.message);
-      setError(mapFirebaseError(err.code));
+      setError(mapFirebaseError(err.code) || `${err.code}: ${err.message}`);
     } finally {
       setLoading(false);
     }
-    
   }
-  
 
   return (
     <KeyboardAvoidingView
@@ -115,20 +176,39 @@ export default function SignupScreen() {
           value={email}
           onChangeText={setEmail}
         />
-        <ThemedInput
-          label="Password"
-          placeholder="At least 8 characters"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        <ThemedInput
-          label="Confirm password"
-          placeholder="Re-enter your password"
-          secureTextEntry
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
+        <ThemedInput label="Password" placeholder="At least 8 characters" secureTextEntry value={password} onChangeText={setPassword} />
+        <ThemedInput label="Confirm password" placeholder="Re-enter your password" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
+
+        {role === "alumni" && (
+          <>
+            <Text style={styles.sectionNote}>
+              Since alumni no longer have institutional email access, we verify identity via
+              graduation records. Upload a scan/photo of your qualification or transcript — an
+              administrator will review it before your account is activated.
+            </Text>
+            <ThemedInput label="Full legal name (as on qualification)" value={fullName} onChangeText={setFullName} />
+            <ThemedInput label="Programme graduated from" value={programme} onChangeText={setProgramme} placeholder="e.g. BSc Computer Science" />
+            <ThemedInput label="Graduation year" value={graduationYear} onChangeText={setGraduationYear} keyboardType="numeric" placeholder="e.g. 2022" />
+
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={typography.label}>Verification document (PDF or image)</Text>
+              <TouchableOpacity onPress={pickVerificationDoc} style={styles.pickerBtn}>
+                <Text style={styles.pickerBtnText}>
+                  {verificationDoc ? `📎 ${verificationDoc.name}` : "Choose a file"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {role === "business" && (
+          <>
+            <Text style={styles.sectionNote}>
+              Business accounts require administrator approval before you can post opportunities.
+            </Text>
+            <ThemedInput label="Company / organisation name" value={companyName} onChangeText={setCompanyName} />
+          </>
+        )}
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -144,17 +224,6 @@ export default function SignupScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-}
-
-function mapFirebaseError(code) {
-  switch (code) {
-    case "auth/email-already-in-use":
-      return "An account with this email already exists.";
-    case "auth/invalid-email":
-      return "Please enter a valid email address.";
-    default:
-      return "Could not create the account. Please try again.";
-  }
 }
 
 const styles = StyleSheet.create({
@@ -179,4 +248,24 @@ const styles = StyleSheet.create({
   roleDesc: { color: colors.textDim, fontSize: 12, marginTop: 2 },
   errorText: { color: colors.danger, fontSize: 13, marginTop: spacing.md },
   linkText: { color: colors.textDim, textAlign: "center" },
+  sectionNote: {
+    color: colors.textDim,
+    fontSize: 12,
+    lineHeight: 17,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  pickerBtn: {
+    backgroundColor: colors.panelLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    alignItems: "center",
+  },
+  pickerBtnText: { color: colors.text, fontSize: 14 },
 });

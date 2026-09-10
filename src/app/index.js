@@ -26,6 +26,10 @@ export default function Index() {
     return <Redirect href="/pending" />;
   }
 
+  if (userDoc?.role === "admin") {
+    return <Redirect href="/admin" />;
+  }
+
   if (userDoc?.role === "business") {
     return <Redirect href="/(business)" />;
   }
