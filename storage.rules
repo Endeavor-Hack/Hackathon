@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Storage security for profile photos, CVs, alumni verification docs,
+// company logos, and short-form video uploads.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() { return request.auth != null; }
+    function isSelf(uid)  { return isSignedIn() && request.auth.uid == uid; }
+    function isAdmin()    { return isSignedIn() && request.auth.token.admin == true; }
+
+    // Profile photos — public read (anyone signed-in), owner-only write.
+    match /profile-photos/{uid}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // CVs — owner + admin read, owner write.
+    match /cvs/{uid}/{fileName} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isSelf(uid)
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Alumni verification documents — owner + admin read.
+    match /alumni-verification/{uid}/{fileName} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isSelf(uid)
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Company logos — public read, owner write.
+    match /company-logos/{uid}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Video uploads — public read (post visibility governs actual reach),
+    // owner write. Transcoded outputs live under /videos/{uid}/processed/
+    // and are written by a Cloud Function (admin SDK bypasses these rules).
+    match /videos/{uid}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid)
+        && request.resource.size < 100 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+    }
+  }
+}

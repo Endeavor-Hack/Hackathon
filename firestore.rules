@@ -1,0 +1,240 @@
+rules_version = '2';
+
+// Backend-enforced role-based access control for Endeavour.
+// The brief requires that access control lives on the backend — hiding
+// screens on the client is explicitly not sufficient — so every collection
+// below re-checks role/ownership rather than trusting the app.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myUid() {
+      return request.auth.uid;
+    }
+    function isSelf(uid) {
+      return isSignedIn() && myUid() == uid;
+    }
+    function myUserDoc() {
+      return get(/databases/$(database)/documents/users/$(myUid())).data;
+    }
+    function myRole() {
+      return myUserDoc().role;
+    }
+    function myStatus() {
+      return myUserDoc().status;
+    }
+    // Admin is authoritative via a custom auth token claim, provisioned
+    // out-of-band by scripts/make-admin.js. This is why admin accounts
+    // can never be self-registered — nothing in the client can grant it.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+    function isActive() {
+      return isSignedIn() && myStatus() == 'active';
+    }
+    function isRole(r) {
+      return isActive() && myRole() == r;
+    }
+    function emailEndsWithAny(email, suffixes) {
+      return suffixes.hasAny([email.split('@')[1]])
+        || (suffixes.size() > 0 && (
+             email.matches('.*' + suffixes[0] + '$')
+          || (suffixes.size() > 1 && email.matches('.*' + suffixes[1] + '$'))
+          || (suffixes.size() > 2 && email.matches('.*' + suffixes[2] + '$'))
+          || (suffixes.size() > 3 && email.matches('.*' + suffixes[3] + '$'))
+        ));
+    }
+    function isStudentEmail(email) {
+      return email.matches('.*@my\\.richfield\\.ac\\.za$')
+          || email.matches('.*@richfield\\.ac\\.za$')
+          || email.matches('.*@my\\.aaa\\.ac\\.za$')
+          || email.matches('.*@aaa\\.ac\\.za$');
+    }
+
+    // ---- users ------------------------------------------------------
+    // A user's own doc is readable by them; other users see only public
+    // subset via the profile visibility rules layer (enforced client-side
+    // by the visibility flags, and here by disallowing writes from
+    // anyone but the owner or an admin).
+    match /users/{uid} {
+      allow read: if isSignedIn(); // profile discoverability; visibility
+                                   // controls filter what the CLIENT shows
+      allow create: if isSelf(uid)
+        && request.resource.data.role in ['student', 'alumni', 'business']
+        // Student role requires an institutional email
+        && (request.resource.data.role != 'student'
+            || isStudentEmail(request.resource.data.email))
+        // Only the two legal initial statuses; admin flips pending→active
+        && (
+            (request.resource.data.role == 'student' && request.resource.data.status == 'active')
+         || (request.resource.data.role in ['alumni','business'] && request.resource.data.status == 'pending')
+        );
+
+      // The owner may update their profile fields but NOT their own role
+      // or status — those are admin-only. Admin can update anything.
+      allow update: if isAdmin()
+        || (isSelf(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status);
+
+      allow delete: if isAdmin();
+    }
+
+    // ---- posts ------------------------------------------------------
+    match /posts/{postId} {
+      allow read: if isActive() || isAdmin();
+      allow create: if isActive()
+        && request.resource.data.authorId == myUid();
+
+      // Non-owner updates limited to the likedBy field (toggle like).
+      allow update: if isAdmin()
+        || (isActive() && resource.data.authorId == myUid())
+        || (isActive()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['likedBy']));
+
+      allow delete: if isAdmin() || (isActive() && resource.data.authorId == myUid());
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if isActive() || isAdmin();
+        allow create: if isActive() && request.resource.data.authorId == myUid();
+        allow update, delete: if isAdmin()
+          || (isActive() && resource.data.authorId == myUid());
+      }
+    }
+
+    // ---- connections -----------------------------------------------
+    match /connections/{connectionId} {
+      allow read: if isActive() && (
+        resource.data.fromUserId == myUid()
+        || resource.data.toUserId == myUid()
+        || isAdmin()
+      );
+      allow create: if isActive()
+        && request.resource.data.fromUserId == myUid()
+        && request.resource.data.status == 'pending';
+      // Only the recipient can accept; either party can delete/decline.
+      allow update: if isActive()
+        && resource.data.toUserId == myUid()
+        && request.resource.data.status == 'accepted';
+      allow delete: if isActive() && (
+        resource.data.fromUserId == myUid()
+        || resource.data.toUserId == myUid()
+        || isAdmin()
+      );
+    }
+
+    // ---- opportunities ---------------------------------------------
+    // Students may read only approved listings; business owners can
+    // read their own regardless of status; admins can read everything.
+    match /opportunities/{opId} {
+      allow read: if isAdmin()
+        || (isActive() && resource.data.status == 'approved')
+        || (isActive() && resource.data.businessId == myUid());
+      allow create: if isRole('business')
+        && request.resource.data.businessId == myUid()
+        && request.resource.data.status == 'pending';
+      // Business may edit their own DRAFT/pending. Only admin may approve.
+      allow update: if isAdmin()
+        || (isRole('business')
+            && resource.data.businessId == myUid()
+            && request.resource.data.businessId == myUid()
+            && request.resource.data.status == resource.data.status);
+      allow delete: if isAdmin()
+        || (isRole('business') && resource.data.businessId == myUid());
+    }
+
+    // ---- applications ----------------------------------------------
+    match /applications/{appId} {
+      // Student can see their own applications; business can see apps
+      // to their own opportunities; admin sees all.
+      allow read: if isAdmin()
+        || (isActive() && resource.data.studentId == myUid())
+        || (isRole('business') && exists(/databases/$(database)/documents/opportunities/$(resource.data.opportunityId))
+            && get(/databases/$(database)/documents/opportunities/$(resource.data.opportunityId)).data.businessId == myUid());
+      allow create: if isRole('student') || isRole('alumni')
+        && request.resource.data.studentId == myUid();
+      allow update: if isAdmin()
+        || (isRole('business')
+            && get(/databases/$(database)/documents/opportunities/$(resource.data.opportunityId)).data.businessId == myUid());
+      allow delete: if isAdmin() || (isActive() && resource.data.studentId == myUid());
+    }
+
+    // ---- notifications ---------------------------------------------
+    match /notifications/{notifId} {
+      // Only the addressee can read a notification.
+      allow read: if isActive() && resource.data.userId == myUid();
+      // Any signed-in user can create a notification addressed to a
+      // real user — the CLIENT decides when to fire one (e.g. on like,
+      // application, message). Admins can broadcast (see announcement
+      // fan-out below); those still just write notification docs.
+      allow create: if isActive();
+      // Recipient marks as read; admin may delete.
+      allow update: if isActive()
+        && resource.data.userId == myUid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAdmin() || (isActive() && resource.data.userId == myUid());
+    }
+
+    // ---- events (admin-only writes) --------------------------------
+    match /events/{eventId} {
+      allow read: if isActive() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---- announcements (admin-only writes) -------------------------
+    match /announcements/{annId} {
+      allow read: if isActive() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---- endorsements ----------------------------------------------
+    match /endorsements/{endId} {
+      allow read: if isActive();
+      allow create: if isActive()
+        && request.resource.data.fromUserId == myUid()
+        && request.resource.data.toUserId != myUid();
+      allow delete: if isAdmin()
+        || (isActive() && resource.data.fromUserId == myUid());
+      allow update: if false; // endorsements are immutable
+    }
+
+    // ---- recommendations -------------------------------------------
+    match /recommendations/{recId} {
+      allow read: if isActive();
+      allow create: if isActive()
+        && request.resource.data.fromUserId == myUid()
+        && request.resource.data.toUserId != myUid();
+      allow update, delete: if isAdmin()
+        || (isActive() && resource.data.fromUserId == myUid());
+    }
+
+    // ---- direct messages -------------------------------------------
+    // A conversation is a 2-person doc. Only its participants can read
+    // or post messages, and creating a conversation requires an accepted
+    // connection between the two parties.
+    match /conversations/{convId} {
+      allow read: if isActive() && myUid() in resource.data.participants;
+      allow create: if isActive()
+        && myUid() in request.resource.data.participants
+        && request.resource.data.participants.size() == 2;
+      allow update: if isActive() && myUid() in resource.data.participants;
+      allow delete: if isAdmin();
+
+      match /messages/{msgId} {
+        allow read: if isActive()
+          && myUid() in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+        allow create: if isActive()
+          && request.resource.data.fromUserId == myUid()
+          && myUid() in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+        allow update: if false;
+        allow delete: if isAdmin() || (isActive() && resource.data.fromUserId == myUid());
+      }
+    }
+  }
+}

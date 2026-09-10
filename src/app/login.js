@@ -7,6 +7,7 @@ import { auth } from "../../firebase/config";
 import { colors, spacing, typography } from "../../theme/colors";
 import ThemedInput from "../../components/ThemedInput";
 import ThemedButton from "../../components/ThemedButton";
+import { mapFirebaseError } from "../../lib/firebaseErrors";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -26,10 +27,11 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      router.replace("/");
       // No manual navigation needed — src/app/index.js re-evaluates auth
       // state and redirects automatically once Firebase confirms sign-in.
     } catch (err) {
-      setError(mapFirebaseError(err.code));
+      setError(mapFirebaseError(err.code) || "Could not sign in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -79,19 +81,6 @@ export default function LoginScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-}
-
-function mapFirebaseError(code) {
-  switch (code) {
-    case "auth/invalid-credential":
-    case "auth/wrong-password":
-    case "auth/user-not-found":
-      return "Incorrect email or password.";
-    case "auth/too-many-requests":
-      return "Too many attempts. Please try again shortly.";
-    default:
-      return "Could not sign in. Please try again.";
-  }
 }
 
 const styles = StyleSheet.create({
