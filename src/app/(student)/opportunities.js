@@ -1,4 +1,9 @@
-// src/app/(student)/opportunities.js
+// The Opportunities tab. Only approved listings are shown (the
+// firestore rules block reads of pending listings from students, so
+// this filter is defence in depth rather than the only barrier).
+// Above the main list there's a "Recommended for you" strip populated
+// by lib/feedRanking.scoreOpportunity — skills overlap + programme +
+// campus match, threshold 20.
 import { useEffect, useMemo, useState } from "react";
 import { View, FlatList, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView } from "react-native";
 import {

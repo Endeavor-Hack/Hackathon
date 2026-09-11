@@ -1,8 +1,6 @@
-// firebase/config.js
-// Fill in your actual project values from the Firebase console:
-// Project Settings → General → Your apps → SDK setup and configuration.
-// These are safe to keep in the client — Firebase's real security boundary
-// is Firestore/Storage security rules, not hiding this config object.
+// Firebase client SDK bootstrap. The API key is safe to commit —
+// Firebase's real security boundary is the Firestore + Storage rules
+// (see firestore.rules and storage.rules), not hiding this config.
 
 import { initializeApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
@@ -23,9 +21,9 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// initializeAuth (not getAuth) + AsyncStorage persistence is required in
-// React Native — without this, users get logged out every time the app
-// restarts, since there's no browser localStorage to fall back on.
+// initializeAuth (not getAuth) + AsyncStorage is what keeps users
+// signed in across app restarts in React Native. Without this we'd
+// bounce everyone to the login screen every cold start.
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage),
 });

@@ -1,9 +1,9 @@
 rules_version = '2';
 
-// Backend-enforced role-based access control for Endeavour.
-// The brief requires that access control lives on the backend — hiding
-// screens on the client is explicitly not sufficient — so every collection
-// below re-checks role/ownership rather than trusting the app.
+// The real security boundary for Endeavour. The brief calls out that
+// client-side gating isn't enough, so every collection below re-checks
+// role and ownership on the server. If a rule doesn't say "allow",
+// the write fails, no matter what the app looks like.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -27,9 +27,10 @@ service cloud.firestore {
     function myStatus() {
       return myUserDoc().status;
     }
-    // Admin is authoritative via a custom auth token claim, provisioned
-    // out-of-band by scripts/make-admin.js. This is why admin accounts
-    // can never be self-registered — nothing in the client can grant it.
+    // Admin is authoritative via a custom auth token claim. The claim
+    // is only set by the claimAdmin Cloud Function (after the passcode
+    // check) or by scripts/make-admin.js — nothing in the client can
+    // grant it. That's why admin accounts can never be self-registered.
     function isAdmin() {
       return isSignedIn() && request.auth.token.admin == true;
     }
@@ -74,12 +75,15 @@ service cloud.firestore {
          || (request.resource.data.role in ['alumni','business'] && request.resource.data.status == 'pending')
         );
 
-      // The owner may update their profile fields but NOT their own role
-      // or status — those are admin-only. Admin can update anything.
+      // The owner may update their profile fields but NOT their own role,
+      // status, or emailVerified flag — those are admin-only (emailVerified
+      // is flipped by the OTP Cloud Function via the admin SDK, which
+      // bypasses these rules). Admin can update anything.
       allow update: if isAdmin()
         || (isSelf(uid)
             && request.resource.data.role == resource.data.role
-            && request.resource.data.status == resource.data.status);
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.get('emailVerified', false) == resource.data.get('emailVerified', false));
 
       allow delete: if isAdmin();
     }
@@ -90,12 +94,14 @@ service cloud.firestore {
       allow create: if isActive()
         && request.resource.data.authorId == myUid();
 
-      // Non-owner updates limited to the likedBy field (toggle like).
+      // Non-owner updates limited to the reaction fields (likedBy for
+      // the legacy like-only path, reactions for multi-type reactions,
+      // and flagged so the client can mark a post for admin review).
       allow update: if isAdmin()
         || (isActive() && resource.data.authorId == myUid())
         || (isActive()
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['likedBy']));
+                 .hasOnly(['likedBy', 'reactions', 'flagged']));
 
       allow delete: if isAdmin() || (isActive() && resource.data.authorId == myUid());
 
@@ -103,8 +109,13 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if isActive() || isAdmin();
         allow create: if isActive() && request.resource.data.authorId == myUid();
-        allow update, delete: if isAdmin()
+        // Delete allowed for: admin, the comment author, or the owner
+        // of the parent post (so post owners can moderate their thread).
+        allow update: if isAdmin()
           || (isActive() && resource.data.authorId == myUid());
+        allow delete: if isAdmin()
+          || (isActive() && resource.data.authorId == myUid())
+          || (isActive() && get(/databases/$(database)/documents/posts/$(postId)).data.authorId == myUid());
       }
     }
 
@@ -157,7 +168,7 @@ service cloud.firestore {
         || (isActive() && resource.data.studentId == myUid())
         || (isRole('business') && exists(/databases/$(database)/documents/opportunities/$(resource.data.opportunityId))
             && get(/databases/$(database)/documents/opportunities/$(resource.data.opportunityId)).data.businessId == myUid());
-      allow create: if isRole('student') || isRole('alumni')
+      allow create: if (isRole('student') || isRole('alumni'))
         && request.resource.data.studentId == myUid();
       allow update: if isAdmin()
         || (isRole('business')
@@ -214,6 +225,13 @@ service cloud.firestore {
         || (isActive() && resource.data.fromUserId == myUid());
     }
 
+    // ---- OTP codes -------------------------------------------------
+    // Only the Cloud Functions (admin SDK) may read/write these. The
+    // client never needs to see hashed OTPs directly.
+    match /otpCodes/{docId} {
+      allow read, write: if false;
+    }
+
     // ---- direct messages -------------------------------------------
     // A conversation is a 2-person doc. Only its participants can read
     // or post messages, and creating a conversation requires an accepted
@@ -232,7 +250,12 @@ service cloud.firestore {
         allow create: if isActive()
           && request.resource.data.fromUserId == myUid()
           && myUid() in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
-        allow update: if false;
+        // Any participant may update — but only the readBy field. This
+        // is the read-receipt mechanism: the receiver adds their own uid
+        // to readBy when they open the conversation.
+        allow update: if isActive()
+          && myUid() in get(/databases/$(database)/documents/conversations/$(convId)).data.participants
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']);
         allow delete: if isAdmin() || (isActive() && resource.data.fromUserId == myUid());
       }
     }

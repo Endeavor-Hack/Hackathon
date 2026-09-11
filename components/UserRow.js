@@ -1,6 +1,7 @@
 // components/UserRow.js
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { colors, spacing, radius } from "../theme/colors";
+import Avatar from "./Avatar";
 
 const ROLE_LABELS = {
   student: "Student",
@@ -9,22 +10,21 @@ const ROLE_LABELS = {
 };
 
 export default function UserRow({
+  uid,
   name,
   role,
+  photoUrl,
   primaryLabel,
   onPrimary,
   primaryDisabled,
   secondaryLabel,
   onSecondary,
   onPress,
-  photoUrl,
 }) {
   const Wrapper = onPress ? TouchableOpacity : View;
   return (
     <Wrapper onPress={onPress} style={styles.row}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{(name || "?").charAt(0).toUpperCase()}</Text>
-      </View>
+      <Avatar uid={uid} name={name} photoUrl={photoUrl} size={40} style={{ marginRight: spacing.sm }} />
 
       <View style={{ flex: 1 }}>
         <Text style={styles.name}>{name}</Text>
@@ -62,16 +62,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: spacing.sm,
-  },
-  avatarText: { color: "#fff", fontWeight: "700", fontSize: 16 },
   name: { color: colors.text, fontWeight: "700", fontSize: 14 },
   role: { color: colors.textDim, fontSize: 12, marginTop: 1 },
   actions: { flexDirection: "row", gap: 8 },

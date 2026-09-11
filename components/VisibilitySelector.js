@@ -1,8 +1,9 @@
-// components/VisibilitySelector.js
-// Per-section visibility toggle. Displayed as a compact horizontal chip
-// row above each profile section on the edit screen. Enforcement lives
-// in the viewer component: when rendering another user's profile,
-// sections whose visibility bars the current viewer are hidden.
+// The four-way chip row shown above each editable profile section:
+// Public / Connections / Businesses / Private. The picker itself
+// just changes state — the actual enforcement happens in the profile
+// viewer (see canView below), which decides whether to render each
+// section based on the current viewer's relationship to the profile
+// owner.
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radius } from "../theme/colors";
 

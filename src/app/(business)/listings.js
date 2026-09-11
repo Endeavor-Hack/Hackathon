@@ -1,6 +1,6 @@
 // src/app/(business)/listings.js
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import {
   collection, query, where, onSnapshot,
   addDoc, updateDoc, deleteDoc, doc, serverTimestamp,
@@ -89,7 +89,16 @@ export default function BusinessListings() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 60 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: 240 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
       <Text style={[typography.h1, { marginBottom: spacing.md }]}>My listings</Text>
       <Text style={[typography.bodyDim, { marginBottom: spacing.md }]}>
         Post opportunities. All new listings need admin approval before they appear to students.
@@ -162,6 +171,7 @@ export default function BusinessListings() {
         ))
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

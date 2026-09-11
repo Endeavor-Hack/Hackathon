@@ -1,5 +1,11 @@
-// src/app/(student)/index.js
-import { View, FlatList, StyleSheet, Text, ActivityIndicator, ScrollView, TouchableOpacity } from "react-native";
+// The Feed — the first thing a student sees. Renders (in this order):
+//   • Header with brand mark
+//   • The latest active announcement (pinned banner)
+//   • A horizontal quick-links row (Interview prep, CV checker,
+//     Events, Career pathways, DMs, AI assistant, My analytics)
+//   • Compose box for text + video posts
+//   • The ranked post list (see lib/feedRanking.js)
+import { View, FlatList, StyleSheet, Text, ActivityIndicator, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { collection, query, orderBy, onSnapshot, where, limit } from "firebase/firestore";
 import { useRouter } from "expo-router";
@@ -11,14 +17,21 @@ import { rankFeed } from "../../../lib/feedRanking";
 import { colors, spacing, typography, radius } from "../../../theme/colors";
 import CreatePostBox from "../../../components/CreatePostBox";
 import PostCard from "../../../components/PostCard";
+import Logo from "../../../components/Logo";
+import { featureFlags } from "../../../lib/featureFlags";
 
-const QUICK_LINKS = [
+const ALL_QUICK_LINKS = [
+  { icon: "🎤", label: "Interview prep", href: "/interview", requires: "aiFeatures" },
+  { icon: "📄", label: "CV checker", href: "/cv-checker", requires: "aiFeatures" },
+  { icon: "🤖", label: "AI assistant", href: "/chatbot", requires: "aiFeatures" },
   { icon: "📅", label: "Events", href: "/events" },
   { icon: "🛤️", label: "Career pathways", href: "/pathways" },
   { icon: "💬", label: "Messages", href: "/messages" },
-  { icon: "🤖", label: "AI assistant", href: "/chatbot" },
   { icon: "📊", label: "My analytics", href: "/analytics" },
 ];
+const QUICK_LINKS = ALL_QUICK_LINKS.filter(
+  (l) => !l.requires || featureFlags[l.requires],
+);
 
 export default function Feed() {
   const router = useRouter();
@@ -69,14 +82,22 @@ export default function Feed() {
   }), [posts, firebaseUser, userDoc, connectionIds]);
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <FlatList
         data={ranked}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         ListHeaderComponent={
           <>
-            <Text style={[typography.h1, { marginBottom: spacing.md }]}>Home Feed</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
+              <Text style={typography.h1}>Home Feed</Text>
+              <Logo size={32} variant="mark" />
+            </View>
 
             {announcement && (
               <View style={styles.announcement}>
@@ -98,7 +119,12 @@ export default function Feed() {
           </>
         }
         renderItem={({ item }) => (
-          <PostCard post={item} currentUserId={firebaseUser?.uid} currentUserName={getDisplayName(userDoc)} />
+          <PostCard
+            post={item}
+            currentUserId={firebaseUser?.uid}
+            currentUserName={getDisplayName(userDoc)}
+            currentUserPhotoUrl={userDoc?.photoUrl}
+          />
         )}
         ListEmptyComponent={
           loading ? (
@@ -110,7 +136,7 @@ export default function Feed() {
           )
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

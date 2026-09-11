@@ -1,6 +1,16 @@
-// src/app/(student)/profile.js
+// Your own profile edit screen. This is the "digital portfolio" the
+// brief asks for — every mandated field (photo, headline, summary,
+// programme, campus, years, skills, interests, work + entrepreneurial
+// experience, GitHub repos, live projects, digital badges, Credly,
+// certifications, awards, leadership, clubs, CV upload) lives on this
+// one screen with per-section visibility controls.
+//
+// The state model is deliberately flat: everything sits on `form` and
+// one Save button writes the whole thing. Photo and CV uploads
+// persist to Firestore immediately on upload (rather than waiting for
+// Save) so people don't lose them if they navigate away.
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -16,12 +26,10 @@ import ThemedButton from "../../../components/ThemedButton";
 import PhotoPicker from "../../../components/PhotoPicker";
 import RepeatableList from "../../../components/RepeatableList";
 import VisibilitySelector from "../../../components/VisibilitySelector";
+import FireLoader from "../../../components/FireLoader";
+import { featureFlags } from "../../../lib/featureFlags";
+import { uriToBlob } from "../../../lib/uriToBlob";
 
-// The brief requires a comprehensive digital portfolio (2.3) — this
-// screen captures every mandated field, with per-section visibility
-// controls. Complex nested state kept flat here rather than split into
-// child components to keep the mental model simple: everything lives in
-// `form`, one Save persists the whole thing.
 export default function Profile() {
   const router = useRouter();
   const { firebaseUser, userDoc } = useAuth();
@@ -94,10 +102,18 @@ export default function Profile() {
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     const path = `cvs/${uid}/cv.pdf`;
-    const blob = await (await fetch(asset.uri)).blob();
-    await uploadBytes(ref(storage, path), blob, { contentType: "application/pdf" });
-    update("cvPath", path);
-    update("cvName", asset.name || "cv.pdf");
+    try {
+      const blob = await uriToBlob(asset.uri);
+      await uploadBytes(ref(storage, path), blob, { contentType: "application/pdf" });
+      const name = asset.name || "cv.pdf";
+      // Persist the path immediately so leaving the screen without
+      // hitting Save profile doesn't strand the upload.
+      update("cvPath", path);
+      update("cvName", name);
+      await updateDoc(doc(db, "users", uid), { cvPath: path, cvName: name });
+    } catch (err) {
+      Alert.alert("CV upload failed", err.message || "Unknown error.");
+    }
   }
 
   async function autofillFromCv() {
@@ -186,18 +202,37 @@ export default function Profile() {
         </View>
       );
     }
-    return <View style={styles.centered}><ActivityIndicator color={colors.accent} /></View>;
+    return <View style={styles.centered}><FireLoader /></View>;
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 80 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+    >
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: 240 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
       <Text style={[typography.h1, { marginBottom: spacing.xs }]}>Your Profile</Text>
       <Text style={[typography.bodyDim, { marginBottom: spacing.lg }]}>{userDoc?.email}</Text>
 
       <PhotoPicker
         uid={uid}
         currentUrl={form.photoUrl}
-        onUploaded={(url) => update("photoUrl", url)}
+        onUploaded={async (url) => {
+          // Persist immediately so users don't lose the photo if they
+          // navigate away before hitting Save profile.
+          update("photoUrl", url);
+          try {
+            await updateDoc(doc(db, "users", uid), { photoUrl: url });
+          } catch (err) {
+            console.error("Failed to persist photo:", err);
+          }
+        }}
       />
 
       <ProfileField label="Full name" value={form.fullName} onChangeText={(v) => update("fullName", v)} placeholder="e.g. Thabo Nkosi" />
@@ -369,7 +404,7 @@ export default function Profile() {
           {form.cvName ? `📎 ${form.cvName} (replace)` : "Upload CV (PDF)"}
         </Text>
       </TouchableOpacity>
-      {form.cvPath ? (
+      {form.cvPath && featureFlags.aiFeatures ? (
         <View style={{ marginTop: spacing.sm }}>
           <ThemedButton title="✨ Auto-fill profile from CV (AI)" variant="secondary" onPress={autofillFromCv} />
         </View>
@@ -384,6 +419,7 @@ export default function Profile() {
         <ThemedButton title="Sign out" variant="secondary" onPress={handleSignOut} />
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

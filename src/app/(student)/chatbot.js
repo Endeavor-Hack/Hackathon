@@ -1,7 +1,8 @@
-// src/app/(student)/chatbot.js
-// AI profile assistant / general chatbot. Calls a Cloud Function that
-// proxies Anthropic Claude — the API key lives server-side. The
-// function loads the caller's user doc to make advice context-aware.
+// The AI profile assistant. Everything you type here goes through
+// the chatWithAssistant Cloud Function, which loads your own user
+// doc as context before asking the model — so its advice about
+// improving your headline or filling in your work history is
+// actually about you, not generic career-coach filler.
 import { useRef, useState } from "react";
 import {
   View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform,

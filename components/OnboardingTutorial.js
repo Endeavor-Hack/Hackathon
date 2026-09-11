@@ -1,14 +1,15 @@
-// components/OnboardingTutorial.js
-// First-run interactive walkthrough. Rendered as a full-screen modal
-// on top of whatever tab the user landed on, so the tabs stay visible
-// underneath and the user has some sense of where they'll end up.
-// Persists completion on users/{uid}.tutorialSeen so it doesn't reappear.
+// The first-time-you-open-the-app walkthrough. Renders on top of the
+// tab bar the user landed on rather than replacing it, so they get a
+// sense of where they'll end up when they dismiss it. We mark the
+// tutorial as seen on the user's doc when they finish (or skip), so
+// it never comes back a second time.
 import { useState } from "react";
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { colors, spacing, typography, radius } from "../theme/colors";
 import ThemedButton from "./ThemedButton";
+import Logo from "./Logo";
 
 const STEPS = [
   {
@@ -61,6 +62,9 @@ export default function OnboardingTutorial({ uid, visible, onClose }) {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
         <View style={styles.card}>
+          <View style={{ alignItems: "center", marginBottom: spacing.sm }}>
+            <Logo size={36} variant="mark" />
+          </View>
           <Text style={styles.emoji}>{current.emoji}</Text>
           <Text style={styles.title}>{current.title}</Text>
           <Text style={styles.body}>{current.body}</Text>

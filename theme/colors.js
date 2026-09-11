@@ -1,7 +1,6 @@
-// theme/colors.js
-// Same palette as the EndeavourAI web app — navy base, orange/red accents.
-// Import this everywhere instead of hardcoding hex values, so the whole
-// app stays consistent and a future palette change only happens in one file.
+// Shared palette + spacing + type tokens. Import from here instead
+// of hard-coding hex values anywhere — a future palette shift then
+// happens in this one file, not scattered across 80 stylesheets.
 
 export const colors = {
   bg: "#0A0E1A",

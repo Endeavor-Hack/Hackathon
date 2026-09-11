@@ -1,10 +1,15 @@
-// components/PhotoPicker.js
+// A tappable circular photo. On tap it opens the OS photo picker,
+// uploads what you pick to Firebase Storage, and hands the URL back
+// via the onUploaded callback. Used for both profile photos
+// (profile-photos/{uid}/photo.jpg) and business logos
+// (company-logos/{uid}/logo.jpg) — the caller decides the path.
 import { useState } from "react";
-import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase/config";
 import { colors, spacing, radius } from "../theme/colors";
+import { uriToBlob } from "../lib/uriToBlob";
 
 // Uploads to /profile-photos/{uid}/photo.jpg — storage.rules permits
 // signed-in read (so other users' profiles can render the image) and
@@ -17,25 +22,36 @@ export default function PhotoPicker({ uid, currentUrl, onUploaded, storagePath, 
     setError("");
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setError("Photo library permission is required."); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
+
+    let result;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+    } catch (err) {
+      setError("Could not open picker: " + err.message);
+      return;
+    }
     if (result.canceled || !result.assets?.[0]) return;
 
     setUploading(true);
     try {
       const asset = result.assets[0];
       const path = storagePath || `profile-photos/${uid}/photo.jpg`;
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      await uploadBytes(ref(storage, path), blob, { contentType: "image/jpeg" });
+      const blob = await uriToBlob(asset.uri);
+      await uploadBytes(ref(storage, path), blob, {
+        contentType: asset.mimeType || "image/jpeg",
+      });
       const url = await getDownloadURL(ref(storage, path));
       onUploaded(url, path);
     } catch (err) {
-      setError(err.message);
+      const msg = friendlyStorageError(err);
+      setError(msg);
+      Alert.alert("Upload failed", msg);
+      console.error("PhotoPicker upload error:", err);
     } finally {
       setUploading(false);
     }
@@ -56,6 +72,17 @@ export default function PhotoPicker({ uid, currentUrl, onUploaded, storagePath, 
       {error ? <Text style={styles.err}>{error}</Text> : null}
     </View>
   );
+}
+
+function friendlyStorageError(err) {
+  const code = err?.code || "";
+  if (code.includes("unauthorized") || code.includes("permission")) {
+    return "Storage rules blocked the upload — sign out and back in.";
+  }
+  if (code.includes("canceled")) return "Upload cancelled.";
+  if (code.includes("quota")) return "Storage quota exceeded.";
+  if (code.includes("unknown")) return "Network error — check your connection.";
+  return err?.message || "Upload failed.";
 }
 
 const styles = StyleSheet.create({

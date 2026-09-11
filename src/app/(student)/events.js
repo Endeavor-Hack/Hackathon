@@ -1,8 +1,8 @@
-// src/app/(student)/events.js
-// Institutional events feed. Only admins create these (see admin-web);
-// students see them here and get a notification for events targeted to
-// their programme (or broadcast to everyone). Fan-out happens on the
-// admin side at publish time.
+// Institutional events feed. Only admins can create events (see the
+// admin panel); students read them here. Events with `targetProgrammes`
+// matching the current user's programme get an accent border and
+// float to the top. The notification fan-out happens at publish
+// time in the admin screen, not here.
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
 import { collection, query, onSnapshot, orderBy } from "firebase/firestore";

@@ -1,7 +1,10 @@
 rules_version = '2';
 
-// Storage security for profile photos, CVs, alumni verification docs,
-// company logos, and short-form video uploads.
+// Storage rules for every file the app uploads: profile photos, CVs,
+// alumni verification documents, company logos, videos. The
+// {allPaths=**} pattern lets each rule cover nested subfolders (e.g.
+// cvs/{uid}/adhoc/2026-04.pdf or videos/{uid}/raw/xxx.mp4) with a
+// single owner check.
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -9,40 +12,40 @@ service firebase.storage {
     function isSelf(uid)  { return isSignedIn() && request.auth.uid == uid; }
     function isAdmin()    { return isSignedIn() && request.auth.token.admin == true; }
 
-    // Profile photos — public read (anyone signed-in), owner-only write.
-    match /profile-photos/{uid}/{fileName} {
+    // Profile photos — signed-in read, owner-only write.
+    match /profile-photos/{uid}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSelf(uid)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
-    // CVs — owner + admin read, owner write.
-    match /cvs/{uid}/{fileName} {
+    // CVs — owner + admin read, owner write. Includes /cvs/{uid}/adhoc/*.
+    match /cvs/{uid}/{allPaths=**} {
       allow read: if isSelf(uid) || isAdmin();
       allow write: if isSelf(uid)
         && request.resource.size < 10 * 1024 * 1024;
     }
 
     // Alumni verification documents — owner + admin read.
-    match /alumni-verification/{uid}/{fileName} {
+    match /alumni-verification/{uid}/{allPaths=**} {
       allow read: if isSelf(uid) || isAdmin();
       allow write: if isSelf(uid)
         && request.resource.size < 10 * 1024 * 1024;
     }
 
-    // Company logos — public read, owner write.
-    match /company-logos/{uid}/{fileName} {
+    // Company logos — signed-in read, owner write.
+    match /company-logos/{uid}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSelf(uid)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Video uploads — public read (post visibility governs actual reach),
-    // owner write. Transcoded outputs live under /videos/{uid}/processed/
-    // and are written by a Cloud Function (admin SDK bypasses these rules).
-    match /videos/{uid}/{fileName} {
+    // Video uploads — signed-in read (feed visibility governs actual reach);
+    // owner writes to /raw/*, Cloud Function (admin SDK bypasses rules)
+    // writes the transcoded outputs to /processed/*.
+    match /videos/{uid}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSelf(uid)
         && request.resource.size < 100 * 1024 * 1024

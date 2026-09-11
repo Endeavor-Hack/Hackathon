@@ -37,7 +37,10 @@ function Shell() {
   return (
     <div className="layout">
       <nav className="sidebar">
-        <h1>Endeavour · Admin</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+          <img src="/logo.png" alt="" style={{ width: 32, height: 32, objectFit: "contain" }} />
+          <h1 style={{ margin: 0, fontSize: 18 }}>Endeavour <span style={{ color: "var(--text-dim)" }}>· Admin</span></h1>
+        </div>
         <NavLink to="/analytics" className={({ isActive }) => isActive ? "active" : ""}>Analytics</NavLink>
         <NavLink to="/users" className={({ isActive }) => isActive ? "active" : ""}>Users</NavLink>
         <NavLink to="/opportunities" className={({ isActive }) => isActive ? "active" : ""}>Opportunities</NavLink>

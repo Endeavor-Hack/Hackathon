@@ -1,4 +1,7 @@
-// src/app/(student)/messages.js
+// List of every conversation the current user is in, sorted by
+// recency. Tapping a row opens the conversation screen. The
+// participants array on each conversation doc is our filter — one
+// query, one round trip.
 import { useEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/firestore";
@@ -8,6 +11,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { colors, spacing, typography, radius } from "../../../theme/colors";
 import { logSnapshotError } from "../../../lib/handleSnapshotError";
 import { getDisplayName } from "../../../lib/displayName";
+import Avatar from "../../../components/Avatar";
 
 export default function Messages() {
   const router = useRouter();
@@ -55,11 +59,7 @@ export default function Messages() {
               onPress={() => router.push(`/conversation?uid=${otherUid}`)}
               style={styles.row}
             >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {((other?.fullName || other?.email || "?").charAt(0) || "?").toUpperCase()}
-                </Text>
-              </View>
+              <Avatar uid={otherUid} name={other ? getDisplayName(other) : "?"} photoUrl={other?.photoUrl} size={40} style={{ marginRight: spacing.sm }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{other ? getDisplayName(other) : "…"}</Text>
                 <Text style={styles.preview} numberOfLines={1}>{item.lastMessage || "(no messages yet)"}</Text>

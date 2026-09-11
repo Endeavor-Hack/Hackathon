@@ -1,4 +1,7 @@
-// src/app/(student)/notifications.js
+// The Notifications tab. Reads live from /notifications where userId
+// matches the current user; no polling. Tapping an unread item marks
+// it read. Device push (via the deliverPush Cloud Function) is a
+// separate layer on top — this screen works either way.
 import { View, FlatList, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { useEffect, useState } from "react";
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
