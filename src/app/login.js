@@ -1,4 +1,7 @@
-// src/app/login.js
+// Sign-in screen. Straight-up Firebase email/password. The gatekeeper
+// (src/app/index.js) handles what to do with the user after they're
+// signed in, so this screen just navigates to "/" on success and lets
+// the gatekeeper route them.
 import { useState } from "react";
 import { View, Text, StyleSheet, KeyboardAvoidingView, ScrollView, Platform, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
@@ -7,7 +10,9 @@ import { auth } from "../../firebase/config";
 import { colors, spacing, typography } from "../../theme/colors";
 import ThemedInput from "../../components/ThemedInput";
 import ThemedButton from "../../components/ThemedButton";
+import Logo from "../../components/Logo";
 import { mapFirebaseError } from "../../lib/firebaseErrors";
+import { featureFlags } from "../../lib/featureFlags";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -44,9 +49,9 @@ export default function LoginScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>
-          Endeavour<Text style={{ color: colors.accent }}>.</Text>
-        </Text>
+        <View style={{ marginBottom: spacing.xl }}>
+          <Logo size={44} />
+        </View>
 
         <Text style={typography.h1}>Welcome back</Text>
         <Text style={typography.bodyDim}>Sign in to continue.</Text>
@@ -72,6 +77,12 @@ export default function LoginScreen() {
         <View style={{ marginTop: spacing.lg }}>
           <ThemedButton title="Sign in" onPress={handleLogin} loading={loading} />
         </View>
+
+        {featureFlags.otpVerification && (
+          <TouchableOpacity onPress={() => router.push("/forgot-password")} style={{ marginTop: spacing.md }}>
+            <Text style={[styles.linkText, { color: colors.accent }]}>Forgot password?</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity onPress={() => router.push("/signup")} style={{ marginTop: spacing.lg }}>
           <Text style={styles.linkText}>

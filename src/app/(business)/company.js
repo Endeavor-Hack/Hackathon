@@ -1,6 +1,6 @@
 // src/app/(business)/company.js
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { signOut } from "firebase/auth";
@@ -10,6 +10,7 @@ import { colors, spacing, typography } from "../../../theme/colors";
 import ProfileField from "../../../components/ProfileField";
 import ThemedButton from "../../../components/ThemedButton";
 import PhotoPicker from "../../../components/PhotoPicker";
+import FireLoader from "../../../components/FireLoader";
 
 export default function CompanyProfile() {
   const router = useRouter();
@@ -69,17 +70,33 @@ export default function CompanyProfile() {
   }
 
   if (!form) {
-    return <View style={styles.centered}><ActivityIndicator color={colors.accent} /></View>;
+    return <View style={styles.centered}><FireLoader /></View>;
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 60 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ padding: spacing.lg, paddingBottom: 240 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
       <Text style={[typography.h1, { marginBottom: spacing.md }]}>Company profile</Text>
 
       <PhotoPicker
         uid={uid}
         currentUrl={form.logoUrl}
-        onUploaded={(url) => update("logoUrl", url)}
+        onUploaded={async (url) => {
+          update("logoUrl", url);
+          try {
+            await updateDoc(doc(db, "users", uid), { logoUrl: url });
+          } catch (err) {
+            console.error("Failed to persist logo:", err);
+          }
+        }}
         storagePath={`company-logos/${uid}/logo.jpg`}
         label="Company logo"
       />
@@ -102,6 +119,7 @@ export default function CompanyProfile() {
         <ThemedButton title="Sign out" variant="secondary" onPress={handleSignOut} />
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

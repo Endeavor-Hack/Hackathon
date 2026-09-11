@@ -97,6 +97,8 @@ export default function Candidates() {
             <View key={a.id} style={styles.card}>
               <TouchableOpacity onPress={() => setPreviewUid(previewUid === a.studentId ? null : a.studentId)}>
                 <UserRow
+                  uid={a.studentId}
+                  photoUrl={profile?.photoUrl}
                   name={profile ? getDisplayName(profile) : a.studentName}
                   role={profile?.role || "student"}
                 />

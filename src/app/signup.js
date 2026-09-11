@@ -1,16 +1,24 @@
-// src/app/signup.js
+// Sign-up screen. One form that reshapes itself based on the picked
+// role: students get the standard email/password; alumni add
+// verification-doc upload; businesses add company name; admins get
+// the passcode field (the passcode itself is checked server-side by
+// the claimAdmin Cloud Function, so it never lives in this bundle).
 import { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes } from "firebase/storage";
+import { httpsCallable } from "firebase/functions";
 import * as DocumentPicker from "expo-document-picker";
-import { auth, db, storage } from "../../firebase/config";
+import { auth, db, storage, functions } from "../../firebase/config";
+import { uriToBlob } from "../../lib/uriToBlob";
 import { colors, spacing, typography, radius } from "../../theme/colors";
 import ThemedInput from "../../components/ThemedInput";
 import ThemedButton from "../../components/ThemedButton";
+import Logo from "../../components/Logo";
 import { mapFirebaseError } from "../../lib/firebaseErrors";
+import { featureFlags } from "../../lib/featureFlags";
 
 const STUDENT_DOMAINS = [
   "@my.richfield.ac.za",
@@ -23,6 +31,7 @@ const ROLES = [
   { key: "student", label: "Student", desc: "Currently studying at Richfield/AAA" },
   { key: "alumni", label: "Alumni", desc: "Graduated — verification required" },
   { key: "business", label: "Business", desc: "Employer or recruiter — approval required" },
+  { key: "admin", label: "Administrator", desc: "Staff only — requires admin passcode" },
 ];
 
 export default function SignupScreen() {
@@ -40,6 +49,9 @@ export default function SignupScreen() {
 
   // Business-only fields
   const [companyName, setCompanyName] = useState("");
+
+  // Admin-only field
+  const [adminPassword, setAdminPassword] = useState("");
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -93,11 +105,38 @@ export default function SignupScreen() {
       setError("Company name is required for business accounts.");
       return;
     }
+    if (role === "admin" && !adminPassword) {
+      setError("Enter the admin passcode.");
+      return;
+    }
 
     setLoading(true);
     try {
       const credential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
       const uid = credential.user.uid;
+
+      // Admin path: skip the normal user-doc write and hand off to the
+      // Cloud Function, which verifies the passcode and creates the
+      // admin doc + custom claim server-side. If the passcode is wrong
+      // the function tears down the auth account and throws.
+      if (role === "admin") {
+        try {
+          await httpsCallable(functions, "claimAdmin")({ adminPassword });
+          // Force a token refresh so the fresh admin claim is present
+          // before the gatekeeper redirects.
+          await credential.user.getIdToken(true);
+          router.replace("/");
+          return;
+        } catch (err) {
+          // Auth user was auto-deleted server-side on wrong passcode.
+          // Sign the client out too so subsequent Firebase calls don't
+          // hit "user-not-found" against a phantom session.
+          try { await auth.signOut(); } catch {}
+          setError(err.message || "Admin passcode was incorrect.");
+          setLoading(false);
+          return;
+        }
+      }
 
       let verificationDocPath = null;
       if (role === "alumni" && verificationDoc) {
@@ -106,8 +145,7 @@ export default function SignupScreen() {
         // exposes a "View verification document" button that reads this.
         const ext = verificationDoc.name?.split(".").pop() || "bin";
         const path = `alumni-verification/${uid}/proof.${ext}`;
-        const response = await fetch(verificationDoc.uri);
-        const blob = await response.blob();
+        const blob = await uriToBlob(verificationDoc.uri);
         await uploadBytes(ref(storage, path), blob, {
           contentType: verificationDoc.mimeType || "application/octet-stream",
         });
@@ -119,6 +157,11 @@ export default function SignupScreen() {
         email: trimmedEmail,
         role,
         status,
+        // With OTP off, we mark the email verified at signup so the
+        // gatekeeper doesn't strand the user on /verify-otp with no
+        // way to complete verification. Turn the flag on in
+        // lib/featureFlags.js once the Cloud Functions are deployed.
+        emailVerified: !featureFlags.otpVerification,
         createdAt: serverTimestamp(),
       };
       const roleFields = role === "alumni"
@@ -133,7 +176,22 @@ export default function SignupScreen() {
           : {};
 
       await setDoc(doc(db, "users", uid), { ...base, ...roleFields });
-      router.replace("/");
+
+      if (featureFlags.otpVerification) {
+        // Trigger the 6-digit OTP email and route to the verification
+        // screen. If sending fails (SMTP config missing, network), the
+        // account still exists — the user can retry via the resend
+        // button on the verify screen.
+        try {
+          await httpsCallable(functions, "sendSignupOtp")({ email: trimmedEmail });
+        } catch (mailErr) {
+          console.warn("Could not send OTP:", mailErr.message);
+        }
+        router.replace(`/verify-otp?email=${encodeURIComponent(trimmedEmail)}`);
+      } else {
+        // Skip verification — send them through the gatekeeper as normal.
+        router.replace("/");
+      }
     } catch (err) {
       setError(mapFirebaseError(err.code) || `${err.code}: ${err.message}`);
     } finally {
@@ -148,9 +206,9 @@ export default function SignupScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>
-          Endeavour<Text style={{ color: colors.accent }}>.</Text>
-        </Text>
+        <View style={{ marginBottom: spacing.xl }}>
+          <Logo size={44} />
+        </View>
 
         <Text style={typography.h1}>Create your account</Text>
         <Text style={typography.bodyDim}>Choose the account type that fits you.</Text>
@@ -207,6 +265,23 @@ export default function SignupScreen() {
               Business accounts require administrator approval before you can post opportunities.
             </Text>
             <ThemedInput label="Company / organisation name" value={companyName} onChangeText={setCompanyName} />
+          </>
+        )}
+
+        {role === "admin" && (
+          <>
+            <Text style={styles.sectionNote}>
+              Administrator accounts are for Richfield/AAA staff only. You must enter the
+              admin passcode — the passcode is verified server-side and is never stored on
+              your device.
+            </Text>
+            <ThemedInput
+              label="Admin passcode"
+              value={adminPassword}
+              onChangeText={setAdminPassword}
+              secureTextEntry
+              placeholder="Enter the admin passcode"
+            />
           </>
         )}
 

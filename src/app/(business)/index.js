@@ -6,6 +6,7 @@ import { db } from "../../../firebase/config";
 import { useAuth } from "../../../context/AuthContext";
 import { colors, spacing, typography, radius } from "../../../theme/colors";
 import { logSnapshotError } from "../../../lib/handleSnapshotError";
+import Logo from "../../../components/Logo";
 
 export default function BusinessHome() {
   const { firebaseUser, userDoc } = useAuth();
@@ -40,7 +41,10 @@ export default function BusinessHome() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg }}>
-      <Text style={[typography.h1]}>Welcome{userDoc?.companyName ? `, ${userDoc.companyName}` : ""}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
+        <Text style={typography.h1}>Welcome{userDoc?.companyName ? `, ${userDoc.companyName}` : ""}</Text>
+        <Logo size={32} variant="mark" />
+      </View>
       <Text style={[typography.bodyDim, { marginBottom: spacing.lg }]}>Your activity at a glance.</Text>
 
       {loading && <ActivityIndicator color={colors.accent} />}

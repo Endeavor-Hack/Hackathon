@@ -1,12 +1,17 @@
-// components/CreatePostBox.js
+// The "share an update" box at the top of the feed. Handles plain
+// text posts and video attachments; the video upload goes to
+// videos/{uid}/raw/*, and the processVideo Cloud Function later
+// transcodes it + patches the post with a thumbnail.
 import { useState } from "react";
-import { View, TextInput, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, TextInput, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes } from "firebase/storage";
 import * as ImagePicker from "expo-image-picker";
 import { db, storage } from "../firebase/config";
 import { colors, spacing, radius } from "../theme/colors";
 import { getDisplayName } from "../lib/displayName";
+import { featureFlags } from "../lib/featureFlags";
+import { uriToBlob } from "../lib/uriToBlob";
 import ThemedButton from "./ThemedButton";
 
 export default function CreatePostBox({ firebaseUser, userDoc }) {
@@ -19,16 +24,24 @@ export default function CreatePostBox({ firebaseUser, userDoc }) {
     setError("");
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setError("Media library permission is required."); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      videoMaxDuration: 90,
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    setVideo(result.assets[0]);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        videoMaxDuration: 90,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setVideo(result.assets[0]);
+    } catch (err) {
+      setError("Picker error: " + err.message);
+    }
   }
 
   async function handlePost() {
+    if (!firebaseUser) {
+      setError("You need to be signed in.");
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed && !video) return;
 
@@ -39,14 +52,17 @@ export default function CreatePostBox({ firebaseUser, userDoc }) {
       if (video) {
         const ext = (video.fileName?.split(".").pop() || video.uri.split(".").pop() || "mp4").toLowerCase();
         videoRawPath = `videos/${firebaseUser.uid}/raw/${Date.now()}.${ext}`;
-        const blob = await (await fetch(video.uri)).blob();
-        await uploadBytes(ref(storage, videoRawPath), blob, { contentType: video.mimeType || "video/mp4" });
+        const blob = await uriToBlob(video.uri);
+        await uploadBytes(ref(storage, videoRawPath), blob, {
+          contentType: video.mimeType || "video/mp4",
+        });
       }
 
       await addDoc(collection(db, "posts"), {
         authorId: firebaseUser.uid,
         authorName: getDisplayName(userDoc),
         authorRole: userDoc?.role || "student",
+        authorPhotoUrl: userDoc?.photoUrl || null,
         text: trimmed,
         likedBy: [],
         reactions: {},
@@ -57,10 +73,10 @@ export default function CreatePostBox({ firebaseUser, userDoc }) {
       setText("");
       setVideo(null);
     } catch (err) {
-      console.error("Failed to create post:", err.code, err.message);
-      setError(err.code === "permission-denied"
-        ? "Couldn't post — check Firestore security rules."
-        : `${err.code || "error"}: ${err.message}`);
+      const msg = friendlyPostError(err);
+      console.error("Failed to create post:", err);
+      setError(msg);
+      Alert.alert("Couldn't post", msg);
     } finally {
       setPosting(false);
     }
@@ -77,16 +93,18 @@ export default function CreatePostBox({ firebaseUser, userDoc }) {
         onChangeText={setText}
       />
 
-      <View style={styles.toolbar}>
-        <TouchableOpacity onPress={pickVideo} style={styles.toolBtn}>
-          <Text style={styles.toolBtnText}>{video ? `🎬 ${video.fileName || "video"}` : "🎬 Add video"}</Text>
-        </TouchableOpacity>
-        {video && (
-          <TouchableOpacity onPress={() => setVideo(null)}>
-            <Text style={{ color: colors.danger, fontSize: 12 }}>Remove</Text>
+      {featureFlags.videoTranscoding && (
+        <View style={styles.toolbar}>
+          <TouchableOpacity onPress={pickVideo} style={styles.toolBtn}>
+            <Text style={styles.toolBtnText}>{video ? `🎬 ${video.fileName || "video"}` : "🎬 Add video"}</Text>
           </TouchableOpacity>
-        )}
-      </View>
+          {video && (
+            <TouchableOpacity onPress={() => setVideo(null)}>
+              <Text style={{ color: colors.danger, fontSize: 12 }}>Remove</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -104,6 +122,18 @@ export default function CreatePostBox({ firebaseUser, userDoc }) {
       )}
     </View>
   );
+}
+
+function friendlyPostError(err) {
+  const code = err?.code || "";
+  const msg = err?.message || "";
+  if (code.includes("unauthorized") || code.includes("permission")) {
+    return "Firestore/Storage rules blocked the post. Sign out and back in.";
+  }
+  if (code.includes("canceled")) return "Cancelled.";
+  if (code.includes("quota")) return "Storage quota exceeded.";
+  if (msg.includes("empty") || msg.includes("unreadable")) return "The selected file couldn't be read.";
+  return msg || "Something went wrong.";
 }
 
 const styles = StyleSheet.create({

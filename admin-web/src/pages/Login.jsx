@@ -24,7 +24,10 @@ export default function Login() {
   return (
     <div className="login-wrapper">
       <form className="login-box" onSubmit={submit}>
-        <h1>Endeavour Admin</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <img src="/logo.png" alt="" style={{ width: 40, height: 40, objectFit: "contain" }} />
+          <h1 style={{ margin: 0 }}>Endeavour Admin</h1>
+        </div>
         <p>Sign in with an account that has the admin claim.</p>
 
         <label>Email</label>

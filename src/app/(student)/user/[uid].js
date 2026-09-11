@@ -1,6 +1,9 @@
-// src/app/(student)/user/[uid].js
-// Viewable profile for any other user, respecting per-section visibility.
-// Also the surface for endorsing skills and writing recommendations.
+// Read-only view of someone else's profile. Sections are hidden or
+// shown according to the target user's visibility settings and the
+// current viewer's relationship to them (self / connection / business
+// / anyone). This screen also hosts the endorsement + written
+// recommendation surface — tap a skill to endorse it, drop a short
+// note at the bottom to leave a recommendation.
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Image, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -15,6 +18,7 @@ import { canView } from "../../../../components/VisibilitySelector";
 import { getDisplayName } from "../../../../lib/displayName";
 import { createNotification } from "../../../../lib/notify";
 import ThemedButton from "../../../../components/ThemedButton";
+import FireLoader from "../../../../components/FireLoader";
 
 export default function UserProfileView() {
   const { uid } = useLocalSearchParams();
@@ -64,7 +68,7 @@ export default function UserProfileView() {
   }, [firebaseUser, uid]);
 
   if (!profile) {
-    return <View style={styles.centered}><ActivityIndicator color={colors.accent} /></View>;
+    return <View style={styles.centered}><FireLoader /></View>;
   }
 
   const viewer = {

@@ -1,7 +1,12 @@
-// components/RepeatableList.js
-// Generic repeatable list of structured items (each rendered from a
-// set of field definitions). Used for work experience, entrepreneurial
-// experience, projects, certifications, awards, leadership, clubs.
+// A reusable "add more of these" list of structured items. Used
+// everywhere the profile screen needs a list you can add rows to —
+// work experience, entrepreneurial ventures, GitHub projects, live
+// project URLs, digital badges, certifications, awards, leadership
+// roles, clubs and activities.
+//
+// Callers give it a `fields` array describing each item's shape and
+// what to render for it; this file doesn't know or care what the
+// items represent.
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radius } from "../theme/colors";
 

@@ -1,4 +1,6 @@
-// src/app/(student)/_layout.js
+// Tab bar for signed-in student & alumni accounts. Also the place
+// where the first-run tutorial modal gets mounted on top of the
+// tabs, so a new signup sees it as soon as they land.
 import { useEffect, useState } from "react";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
@@ -55,6 +57,8 @@ function TabsShell() {
       <Tabs.Screen name="conversation" options={{ href: null }} />
       <Tabs.Screen name="user/[uid]" options={{ href: null }} />
       <Tabs.Screen name="analytics" options={{ href: null }} />
+      <Tabs.Screen name="interview" options={{ href: null }} />
+      <Tabs.Screen name="cv-checker" options={{ href: null }} />
     </Tabs>
   );
 }

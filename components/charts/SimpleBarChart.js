@@ -6,13 +6,21 @@ import { View, Text } from "react-native";
 import Svg, { Rect, Text as SvgText, Line, G } from "react-native-svg";
 import { colors } from "../../theme/colors";
 
-export default function SimpleBarChart({ data, width = 300, height = 180, color = colors.accent }) {
+function truncate(s, n) {
+  const str = String(s ?? "");
+  return str.length > n ? str.slice(0, n - 1) + "…" : str;
+}
+
+export default function SimpleBarChart({ data, width = 300, height = 200, color = colors.accent }) {
   if (!data.length) return <Text style={{ color: colors.textDim }}>No data yet.</Text>;
   const max = Math.max(1, ...data.map((d) => d.value));
-  const padding = { left: 24, right: 8, top: 8, bottom: 30 };
+  // Room at the top for the value label above each bar, and enough at
+  // the bottom for the x-axis label; without this the tallest bar's
+  // value gets clipped by the SVG viewport.
+  const padding = { left: 28, right: 12, top: 24, bottom: 32 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
-  const barW = chartW / data.length - 6;
+  const barW = Math.max(8, chartW / data.length - 6);
 
   return (
     <View>
@@ -25,10 +33,10 @@ export default function SimpleBarChart({ data, width = 300, height = 180, color 
           return (
             <G key={i}>
               <Rect x={x} y={y} width={barW} height={h} fill={color} rx={4} />
-              <SvgText x={x + barW / 2} y={padding.top + chartH + 14} fill={colors.textDim} fontSize="10" textAnchor="middle">
-                {d.label}
+              <SvgText x={x + barW / 2} y={padding.top + chartH + 16} fill={colors.textDim} fontSize="10" textAnchor="middle">
+                {truncate(d.label, 8)}
               </SvgText>
-              <SvgText x={x + barW / 2} y={y - 4} fill={colors.text} fontSize="10" textAnchor="middle">
+              <SvgText x={x + barW / 2} y={Math.max(y - 6, 12)} fill={colors.text} fontSize="10" textAnchor="middle">
                 {d.value}
               </SvgText>
             </G>

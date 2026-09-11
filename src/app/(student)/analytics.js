@@ -1,6 +1,7 @@
-// src/app/(student)/analytics.js
-// Student dashboard: distinct from business + admin dashboards, per the
-// brief's requirement that each user type gets its own analytics view.
+// The student-facing analytics dashboard — one of the three the
+// brief asks for (student / business / admin). Profile completeness
+// vs peer average, profile views over time, connection count, and
+// engagement on your most recent posts.
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Dimensions } from "react-native";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
@@ -11,6 +12,7 @@ import { colors, spacing, typography, radius } from "../../../theme/colors";
 import SimpleBarChart from "../../../components/charts/SimpleBarChart";
 import SimpleLineChart from "../../../components/charts/SimpleLineChart";
 import { logSnapshotError } from "../../../lib/handleSnapshotError";
+import FireLoader from "../../../components/FireLoader";
 
 const REQUIRED_FIELDS = [
   "photoUrl", "fullName", "headline", "summary", "programme", "campus",
@@ -105,7 +107,7 @@ export default function StudentAnalytics() {
       .map(([label, value]) => ({ label, value }));
   }, [profileViews]);
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator color={colors.accent} /></View>;
+  if (loading) return <View style={styles.centered}><FireLoader /></View>;
 
   const chartWidth = Dimensions.get("window").width - spacing.lg * 2 - spacing.md * 2;
 

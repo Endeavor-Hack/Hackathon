@@ -1,28 +1,29 @@
 /*
- * Admin provisioning tool.
+ * Bootstrap the very first admin account.
  *
- * The brief requires that admin accounts NEVER be self-registerable, and
- * that the provisioning + protection of admin credentials be demonstrated
- * and explained. This script is that mechanism:
+ * The app has a self-serve admin signup path too (Administrator role
+ * on the signup screen + passcode), but for the very first admin —
+ * before there's anyone around to know the passcode — this script is
+ * the escape hatch.
  *
- *   1) Get a Firebase Admin service-account JSON from:
- *        Firebase console → Project settings → Service accounts
- *        → "Generate new private key"
- *      Save it as `service-account.json` at the repo root (already in
- *      .gitignore — never commit it).
+ * Steps:
+ *   1. Grab a Firebase service-account key:
+ *        Firebase console → Project settings → Service accounts →
+ *        "Generate new private key". Save it as service-account.json
+ *        at the repo root. It's gitignored — never commit it.
  *
- *   2) Ask the person to sign up in the app normally (any role — you'll
- *      overwrite it). Grab their UID from Firebase Console → Auth → Users.
+ *   2. Have the person sign up in the app as any role. Copy their UID
+ *      from Firebase Console → Authentication → Users.
  *
- *   3) Run:
- *        node scripts/make-admin.js <uid>
+ *   3. Run: node scripts/make-admin.js <uid>
  *
  * What it does:
- *   - Sets a custom auth claim { admin: true } on the user (this is what
- *     firestore.rules checks — request.auth.token.admin == true).
- *   - Updates their users/{uid} doc with role: "admin", status: "active".
+ *   • Sets a custom auth claim { admin: true } on their auth account
+ *     (this is what firestore.rules checks for privileged writes).
+ *   • Flips their users/{uid} doc to role: "admin", status: "active".
  *
- * There is intentionally NO self-service admin flow in the mobile app.
+ * They need to sign out and back in for the fresh token to pick up
+ * the new claim.
  */
 
 const admin = require("firebase-admin");

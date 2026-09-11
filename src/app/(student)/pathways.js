@@ -1,6 +1,7 @@
-// src/app/(student)/pathways.js
-// Career pathway explorer. Groups alumni by programme so students can
-// see the trajectories of people who studied what they're studying.
+// Career Pathway Explorer. Groups alumni by their programme so a
+// student studying, say, BSc IT can see the actual jobs previous BSc
+// IT graduates ended up in. Timeline of each alumni's work history is
+// rendered inline — tap a card to open their full profile.
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { collection, query, where, onSnapshot } from "firebase/firestore";

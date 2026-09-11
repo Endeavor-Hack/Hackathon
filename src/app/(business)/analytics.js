@@ -10,6 +10,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { colors, spacing, typography, radius } from "../../../theme/colors";
 import SimpleBarChart from "../../../components/charts/SimpleBarChart";
 import SimplePieChart from "../../../components/charts/SimplePieChart";
+import FireLoader from "../../../components/FireLoader";
 
 export default function BusinessAnalytics() {
   const { firebaseUser } = useAuth();
@@ -78,7 +79,7 @@ export default function BusinessAnalytics() {
       .map(([label, value]) => ({ label: String(label), value }));
   }, [applicants]);
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator color={colors.accent} /></View>;
+  if (loading) return <View style={styles.centered}><FireLoader /></View>;
 
   const chartWidth = Dimensions.get("window").width - spacing.lg * 2 - spacing.md * 2;
 

@@ -1,4 +1,10 @@
-// src/app/(student)/connections.js
+// The Connections tab. Three sections stacked from top to bottom:
+//   • Requests — pending inbound requests, with Accept / Decline
+//   • Your Connections — everyone you're already connected to
+//   • Discover — every other active student / alumni, minus anyone
+//     you're already connected to or have a pending request with.
+//     Business accounts don't appear here — this is a peer network,
+//     not a directory.
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
 import {
@@ -12,6 +18,7 @@ import { getDisplayName } from "../../../lib/displayName";
 import { createNotification } from "../../../lib/notify";
 import { logSnapshotError } from "../../../lib/handleSnapshotError";
 import UserRow from "../../../components/UserRow";
+import FireLoader from "../../../components/FireLoader";
 import { useRouter } from "expo-router";
 
 export default function Connections() {
@@ -124,7 +131,7 @@ export default function Connections() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color={colors.accent} />
+        <FireLoader />
       </View>
     );
   }
@@ -141,6 +148,8 @@ export default function Connections() {
             return (
               <UserRow
                 key={req.id}
+                uid={req.fromUserId}
+                photoUrl={fromUser?.photoUrl}
                 name={fromUser ? getDisplayName(fromUser) : "Unknown"}
                 role={fromUser?.role}
                 primaryLabel="Accept"
@@ -162,6 +171,8 @@ export default function Connections() {
         myConnections.map((u) => (
           <UserRow
             key={u.id}
+            uid={u.id}
+            photoUrl={u.photoUrl}
             name={getDisplayName(u)}
             role={u.role}
             onPress={() => router.push(`/user/${u.id}`)}
@@ -176,6 +187,8 @@ export default function Connections() {
         discoverUsers.map((u) => (
           <UserRow
             key={u.id}
+            uid={u.id}
+            photoUrl={u.photoUrl}
             name={getDisplayName(u)}
             role={u.role}
             primaryLabel="Connect"

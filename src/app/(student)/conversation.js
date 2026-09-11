@@ -1,4 +1,8 @@
-// src/app/(student)/conversation.js
+// A single 1:1 conversation. Messages are ordered oldest-to-newest.
+// When you open the screen, we mark every unread message from the
+// other person as read in one batched write; a "Seen ✓✓" tag then
+// appears under the sender's most recent outgoing message when the
+// receiver's uid lands in that message's readBy array.
 import { useEffect, useRef, useState } from "react";
 import {
   View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform,
@@ -7,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   doc, setDoc, updateDoc, serverTimestamp, collection, query, orderBy,
-  onSnapshot, addDoc, getDoc,
+  onSnapshot, addDoc, getDoc, arrayUnion, writeBatch,
 } from "firebase/firestore";
 import { db } from "../../../firebase/config";
 import { useAuth } from "../../../context/AuthContext";
@@ -16,6 +20,7 @@ import { getDisplayName } from "../../../lib/displayName";
 import { createNotification } from "../../../lib/notify";
 import { conversationIdFor } from "../../../lib/conversationId";
 import { logSnapshotError } from "../../../lib/handleSnapshotError";
+import Avatar from "../../../components/Avatar";
 
 export default function Conversation() {
   const { uid: otherUid } = useLocalSearchParams();
@@ -35,13 +40,30 @@ export default function Conversation() {
   }, [otherUid]);
 
   useEffect(() => {
-    if (!convId) return;
+    if (!convId || !firebaseUser) return;
     const q = query(collection(db, "conversations", convId, "messages"), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMessages(list);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+
+      // Mark every incoming message I haven't read yet as read.
+      // Batched so it's one round-trip regardless of how many arrived
+      // while I was away.
+      const unread = list.filter((m) =>
+        m.fromUserId !== firebaseUser.uid && !(m.readBy || []).includes(firebaseUser.uid),
+      );
+      if (unread.length > 0) {
+        const batch = writeBatch(db);
+        unread.forEach((m) => {
+          batch.update(doc(db, "conversations", convId, "messages", m.id), {
+            readBy: arrayUnion(firebaseUser.uid),
+          });
+        });
+        batch.commit().catch((err) => console.warn("Mark-read failed:", err.message));
+      }
     }, (err) => logSnapshotError("Messages error", err));
-  }, [convId]);
+  }, [convId, firebaseUser]);
 
   async function send() {
     const text = draft.trim();
@@ -60,6 +82,7 @@ export default function Conversation() {
       await addDoc(collection(db, "conversations", convId, "messages"), {
         fromUserId: firebaseUser.uid,
         text,
+        readBy: [firebaseUser.uid], // sender has trivially read their own message
         createdAt: serverTimestamp(),
       });
       await updateDoc(doc(db, "conversations", convId), {
@@ -84,6 +107,7 @@ export default function Conversation() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>←</Text></TouchableOpacity>
+        <Avatar uid={otherUid} name={other ? getDisplayName(other) : "?"} photoUrl={other?.photoUrl} size={32} />
         <Text style={typography.h2}>{other ? getDisplayName(other) : "…"}</Text>
       </View>
 
@@ -92,11 +116,25 @@ export default function Conversation() {
         data={messages}
         keyExtractor={(m) => m.id}
         contentContainerStyle={{ padding: spacing.md }}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const mine = item.fromUserId === firebaseUser.uid;
+          const seenByOther = mine && (item.readBy || []).includes(otherUid);
+          // Only show a receipt on my most recent message — matches
+          // how iMessage / WhatsApp show it, and stops receipts
+          // duplicating on every message above it too.
+          const isMyLatest = mine && messages
+            .slice(index + 1)
+            .every((m) => m.fromUserId !== firebaseUser.uid);
           return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-              <Text style={{ color: mine ? "#fff" : colors.text }}>{item.text}</Text>
+            <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+              <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                <Text style={{ color: mine ? "#fff" : colors.text }}>{item.text}</Text>
+              </View>
+              {isMyLatest && (
+                <Text style={styles.receipt}>
+                  {seenByOther ? "Seen ✓✓" : "Delivered ✓"}
+                </Text>
+              )}
             </View>
           );
         }}
@@ -142,4 +180,5 @@ const styles = StyleSheet.create({
   },
   sendBtn: { backgroundColor: colors.accent, borderRadius: radius.sm, paddingHorizontal: spacing.md, justifyContent: "center" },
   sendBtnText: { color: "#fff", fontWeight: "700" },
+  receipt: { color: colors.textDim, fontSize: 10, marginTop: 2, marginBottom: 6, marginRight: 4 },
 });
