@@ -5,9 +5,17 @@
 import { initializeApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, setLogLevel } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
+
+// Firestore's SDK logs any snapshot error to console.error before it
+// invokes our own onError handlers — the sign-out race in particular
+// throws a harmless "permission-denied" that we already catch, but
+// the SDK still prints it in bright red. Muting the SDK's own logger
+// keeps the terminal readable during development. Real errors from
+// our app still fire through onError callbacks and our own logging.
+setLogLevel("silent");
 
 const firebaseConfig = {
   apiKey: "AIzaSyBOG1MMzpQgAMrlhiskng6WxyCEIG4wv0c",

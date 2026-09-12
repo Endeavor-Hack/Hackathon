@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../../../firebase/config";
 import { colors, spacing, typography, radius } from "../../../theme/colors";
+import { stripMarkdown } from "../../../lib/stripMarkdown";
 
 const STARTERS = [
   "How can I improve my profile?",
@@ -38,7 +39,7 @@ export default function Chatbot() {
     try {
       const call = httpsCallable(functions, "chatWithAssistant");
       const res = await call({ messages: next.map(({ role, content }) => ({ role, content })) });
-      setMessages([...next, { role: "assistant", content: res.data.reply }]);
+      setMessages([...next, { role: "assistant", content: stripMarkdown(res.data.reply) }]);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     } catch (err) {
       setError(err.message || "AI is unavailable right now.");
